@@ -1,0 +1,72 @@
+﻿name: vt-3301-python
+
+services:
+  data-prep:
+    build: .
+    command: ["prepare"]
+    environment:
+      SOURCES_DIR: /data/sources
+    volumes:
+      - vt_data:/data
+
+  preprocess:
+    build: .
+    command: ["preprocess"]
+    environment:
+      SOURCES_DIR: /data/sources
+      OUTPUT: /data/basemap.gpkg
+    volumes:
+      - vt_data:/data
+
+  generate:
+    build: .
+    command: ["generate", "--mode", "${MODE:-tallinn}"]
+    environment:
+      GDAL_NUM_THREADS: ALL_CPUS
+      DATA_DIR: /data
+      OUT_DIR: /out
+      TMP_DIR: /gdaltmp
+    volumes:
+      - vt_data:/data
+      - vt_tiles:/out
+      - vt_tmp:/gdaltmp
+
+  pipeline:
+    build: .
+    command: ["run-all", "--mode", "${MODE:-tallinn}"]
+    environment:
+      GDAL_NUM_THREADS: ALL_CPUS
+      SOURCES_DIR: /data/sources
+      DATA_DIR: /data
+      OUT_DIR: /out
+      TMP_DIR: /gdaltmp
+      VIEWER_CONFIG: /app/viewer/config.js
+    volumes:
+      - vt_data:/data
+      - vt_tiles:/out
+      - vt_tmp:/gdaltmp
+      - ./viewer:/app/viewer
+
+  viewer-config:
+    build: .
+    command: ["viewer-config"]
+    volumes:
+      - ./viewer:/app/viewer
+
+  viewer:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - vt_tiles:/srv/tiles:ro
+      - ./viewer/index.html:/usr/share/nginx/html/index.html:ro
+      - ./viewer/config.js:/usr/share/nginx/html/config.js:ro
+      - ./viewer/ehak_counties.geojson:/usr/share/nginx/html/ehak_counties.geojson:ro
+      - ./viewer/osm_bright_style.json:/usr/share/nginx/html/osm_bright_style.json:ro
+      - ./viewer/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+volumes:
+  vt_data:
+  vt_tiles:
+  vt_tmp:
+

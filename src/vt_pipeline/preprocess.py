@@ -1,0 +1,38 @@
+from __future__ import annotations
+
+import shutil
+import tempfile
+from pathlib import Path
+
+from .gdal import ogr2ogr, require_file
+from .layers import LAYERS
+
+
+def preprocess(sources_dir: str | Path, output: str | Path) -> None:
+    sources = Path(sources_dir)
+    output = Path(output)
+    etak = require_file(sources / "etak.gpkg", "run `python -m vt_pipeline prepare` first")
+    ehak = require_file(sources / "ehak.gpkg", "run `python -m vt_pipeline prepare` first")
+
+    if output.exists():
+        print(f"{output} already exists, skipping. Delete it to rebuild.")
+        return
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    source_files = {"etak": etak, "ehak": ehak}
+
+    with tempfile.TemporaryDirectory(prefix="basemap-") as tmp:
+        tmp_out = Path(tmp) / "basemap.gpkg"
+        for layer in LAYERS:
+            print(f"Creating layer {layer.name}: {layer.comment}")
+            ogr2ogr(
+                tmp_out,
+                source_files[layer.source],
+                layer.sql,
+                layer.name,
+                update=tmp_out.exists(),
+                nlt=layer.nlt,
+            )
+        shutil.move(str(tmp_out), output)
+    print(f"basemap.gpkg ready: {output}")
+

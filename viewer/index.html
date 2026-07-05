@@ -1,0 +1,290 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estonia EPSG:3301 Vector Tiles</title>
+<script src="https://cdn.jsdelivr.net/npm/proj4@2.15.0/dist/proj4.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ol@10.6.1/dist/ol.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ol-mapbox-style@13.4.1/dist/olms.js"></script>
+<script src="/config.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@10.6.1/ol.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; }
+  #map { width: 100%; height: 100vh; background: #f8f4f0; }
+  #info {
+    position: absolute; top: 10px; left: 10px; z-index: 100;
+    background: rgba(255,255,255,0.92); padding: 8px 14px;
+    border-radius: 4px; font-size: 13px; box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    color: #555;
+  }
+  #info span { font-weight: 600; color: #333; }
+  #status {
+    position: absolute; right: 10px; bottom: 10px; z-index: 100;
+    max-width: min(520px, calc(100vw - 20px));
+    background: rgba(255,255,255,0.92); padding: 8px 12px;
+    border-radius: 4px; font-size: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    color: #555;
+  }
+  #status:empty { display: none; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="info">
+  EPSG:3301 L-EST | <span id="src"></span> | z<span id="zoom">8</span> |
+  <span id="coords"></span> |
+  <span id="tilecoord"></span>
+</div>
+<div id="status"></div>
+<script>
+proj4.defs('EPSG:3301',
+  '+proj=lcc +lat_1=59.33333333333334 +lat_2=58 +lat_0=57.51755393055556 ' +
+  '+lon_0=24 +x_0=500000 +y_0=6375000 +ellps=GRS80 +units=m +no_defs');
+ol.proj.proj4.register(proj4);
+
+const viewerConfig = window.VT_PIPELINE_CONFIG || {
+  projection: 'EPSG:3301',
+  extent: [40500, 5993000, 1064500, 7017000],
+  origin: [40500, 7017000],
+  tileSize: 256,
+  maxzoom: 13,
+  baseResolution: 4000,
+  defaultSource: 'tallinn',
+  sources: { tallinn: '/tiles/tallinn/{z}/{x}/{y}.pbf' }
+};
+
+const extent = viewerConfig.extent;
+const proj3301 = ol.proj.get('EPSG:3301');
+proj3301.setExtent(extent);
+
+const resolutions = [];
+for (let z = 0; z <= viewerConfig.maxzoom; z++) {
+  resolutions.push(viewerConfig.baseResolution / Math.pow(2, z));
+}
+
+const tileGrid = new ol.tilegrid.TileGrid({
+  extent, origin: viewerConfig.origin, resolutions, tileSize: viewerConfig.tileSize
+});
+
+const params = new URLSearchParams(location.search);
+const sources = viewerConfig.sources || {};
+const srcKey = sources[params.get('src')] ? params.get('src') : viewerConfig.defaultSource;
+const tileUrl = params.get('url') || sources[srcKey];
+const styleUrl = params.get('styleUrl') || 'osm_bright_style.json';
+document.getElementById('src').textContent =
+  params.get('url') ? 'custom' : srcKey.toUpperCase();
+
+let currentZoom = 8;
+
+function labelText(value) {
+  if (value === null || value === undefined || value === '') return null;
+  return String(value);
+}
+
+function clone(value) {
+  if (typeof structuredClone === 'function') return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
+}
+
+const WEB_MERCATOR_STYLE_Z0_RESOLUTION = 78271.51696402048;
+const styleZoomOffset = Math.log2(WEB_MERCATOR_STYLE_Z0_RESOLUTION / viewerConfig.baseResolution);
+
+function webMercatorZoomTo3301(zoom) {
+  return zoom - styleZoomOffset;
+}
+
+function clampLayerZoom(zoom) {
+  return Math.max(0, Math.min(viewerConfig.maxzoom + 1, webMercatorZoomTo3301(zoom)));
+}
+
+function isZoomExpression(value) {
+  return Array.isArray(value) && value.length === 1 && value[0] === 'zoom';
+}
+
+function convertZoomExpression(expression) {
+  if (!Array.isArray(expression)) return expression;
+
+  if ((expression[0] === 'interpolate' ||
+       expression[0] === 'interpolate-hcl' ||
+       expression[0] === 'interpolate-lab') &&
+      isZoomExpression(expression[2])) {
+    return expression.map((item, index) =>
+      index >= 3 && index % 2 === 1 && typeof item === 'number'
+        ? webMercatorZoomTo3301(item)
+        : convertStyleZooms(item));
+  }
+
+  if (expression[0] === 'step' && isZoomExpression(expression[1])) {
+    return expression.map((item, index) =>
+      index >= 3 && index % 2 === 1 && typeof item === 'number'
+        ? webMercatorZoomTo3301(item)
+        : convertStyleZooms(item));
+  }
+
+  if (['<', '<=', '>', '>=', '==', '!='].includes(expression[0])) {
+    const leftIsZoom = isZoomExpression(expression[1]);
+    const rightIsZoom = isZoomExpression(expression[2]);
+    return expression.map((item, index) => {
+      if (typeof item === 'number' && ((index === 1 && rightIsZoom) || (index === 2 && leftIsZoom))) {
+        return webMercatorZoomTo3301(item);
+      }
+      return convertStyleZooms(item);
+    });
+  }
+
+  return expression.map(convertStyleZooms);
+}
+
+function convertStyleZooms(value) {
+  if (Array.isArray(value)) return convertZoomExpression(value);
+  if (!value || typeof value !== 'object') return value;
+
+  const converted = {};
+  const stops = value.stops;
+  const hasCompositeStops =
+    Array.isArray(stops) && stops.some((stop) => stop && stop[0] && typeof stop[0] === 'object' && 'zoom' in stop[0]);
+  const hasCameraStops =
+    Array.isArray(stops) && !value.property && stops.some((stop) => Array.isArray(stop) && typeof stop[0] === 'number');
+
+  for (const [key, child] of Object.entries(value)) {
+    if ((key === 'minzoom' || key === 'maxzoom') && typeof child === 'number') {
+      converted[key] = clampLayerZoom(child);
+    } else if (key === 'stops' && Array.isArray(child) && (hasCameraStops || hasCompositeStops)) {
+      converted[key] = child.map((stop) => {
+        if (!Array.isArray(stop)) return convertStyleZooms(stop);
+        const stopKey = stop[0];
+        if (typeof stopKey === 'number') {
+          return [webMercatorZoomTo3301(stopKey), convertStyleZooms(stop[1])];
+        }
+        if (stopKey && typeof stopKey === 'object' && typeof stopKey.zoom === 'number') {
+          return [
+            Object.assign({}, stopKey, { zoom: webMercatorZoomTo3301(stopKey.zoom) }),
+            convertStyleZooms(stop[1])
+          ];
+        }
+        return stop.map(convertStyleZooms);
+      });
+    } else {
+      converted[key] = convertStyleZooms(child);
+    }
+  }
+
+  return converted;
+}
+
+function prepare3301Style(glStyle) {
+  const style = convertStyleZooms(clone(glStyle));
+  style.sources = style.sources || {};
+
+  const sourceId = Object.keys(style.sources).find((key) => style.sources[key].type === 'vector') || 'openmaptiles';
+  style.sources[sourceId] = {
+    type: 'vector',
+    tiles: [tileUrl],
+    minzoom: 0,
+    maxzoom: viewerConfig.maxzoom
+  };
+
+  if (!style.metadata) style.metadata = {};
+  style.metadata['vt-pipeline:styleZoomOffset'] = styleZoomOffset;
+
+  return { style, sourceId };
+}
+
+const countyLayer = new ol.layer.Vector({
+  source: new ol.source.Vector({
+    url: '/ehak_counties.geojson',
+    format: new ol.format.GeoJSON({ dataProjection: proj3301 })
+  }),
+  style: function(feature) {
+    const name = labelText(feature.get('MNIMI'));
+    return new ol.style.Style({
+      fill: new ol.style.Fill({ color: 'rgba(248,244,240,0.25)' }),
+      stroke: new ol.style.Stroke({ color: 'rgba(180,128,132,0.45)', width: 1, lineDash: [8, 4] }),
+      text: name ? new ol.style.Text({
+        text: labelText(name),
+        font: 'bold 11px system-ui, sans-serif',
+        fill: new ol.style.Fill({ color: 'rgba(130,100,105,0.7)' }),
+        stroke: new ol.style.Stroke({ color: '#f8f4f0', width: 2 }),
+        overflow: true
+      }) : undefined
+    });
+  },
+  declutter: true,
+  maxResolution: resolutions[0],
+  minResolution: resolutions[7]
+});
+
+const vtLayer = new ol.layer.VectorTile({
+  declutter: true,
+  source: new ol.source.VectorTile({
+    projection: proj3301,
+    format: new ol.format.MVT(),
+    tileGrid: tileGrid,
+    url: tileUrl
+  })
+});
+
+const map = new ol.Map({
+  target: 'map',
+  layers: [countyLayer, vtLayer],
+  view: new ol.View({
+    projection: proj3301,
+    resolutions: resolutions,
+    center: [542600, 6589000],
+    resolution: resolutions[8]
+  })
+});
+
+const statusEl = document.getElementById('status');
+
+fetch(styleUrl)
+  .then((response) => {
+    if (!response.ok) throw new Error('HTTP ' + response.status + ' while loading ' + styleUrl);
+    return response.json();
+  })
+  .then((glStyle) => {
+    const prepared = prepare3301Style(glStyle);
+    return olms.applyStyle(vtLayer, prepared.style, {
+      source: prepared.sourceId,
+      updateSource: false,
+      projection: viewerConfig.projection,
+      resolutions: resolutions,
+      styleUrl: new URL(styleUrl, location.href).href
+    }).then(() => {
+      statusEl.textContent = 'OSM Bright via ol-mapbox-style | style zoom offset -' +
+        (Math.round(styleZoomOffset * 100) / 100);
+    });
+  })
+  .catch((error) => {
+    console.error(error);
+    statusEl.textContent = 'Style load failed: ' + error.message;
+  });
+
+const zoomEl = document.getElementById('zoom');
+const coordsEl = document.getElementById('coords');
+const tileCoordEl = document.getElementById('tilecoord');
+
+map.on('moveend', function() {
+  const res = map.getView().getResolution();
+  const z = resolutions.indexOf(res);
+  currentZoom = z >= 0 ? z : Math.log2(viewerConfig.baseResolution / res);
+  zoomEl.textContent = z >= 0 ? z : '~' + Math.round(currentZoom * 10) / 10;
+});
+
+map.on('pointermove', function(e) {
+  const [x, y] = e.coordinate;
+  coordsEl.textContent = Math.round(x) + ', ' + Math.round(y);
+  const z = currentZoom;
+  if (z >= 0 && z <= viewerConfig.maxzoom && z === Math.floor(z)) {
+    const tileEdge = viewerConfig.baseResolution / Math.pow(2, z) * viewerConfig.tileSize;
+    const tx = Math.floor((x - viewerConfig.origin[0]) / tileEdge);
+    const ty = Math.floor((viewerConfig.origin[1] - y) / tileEdge);
+    tileCoordEl.textContent = z + '/' + tx + '/' + ty;
+  }
+});
+</script>
+</body>
+</html>
+
