@@ -19,6 +19,10 @@ class LayerDef:
 # Layers are split into L-EST zoom bands because EPSG:3301 zoom levels are about
 # 4 zooms lower than Web Mercator/OpenMapTiles levels. For example, OMT z13
 # building detail maps roughly to L-EST z9.
+#
+# Dual carriageways: ETAK draws each carriageway of a 2+2 road as its own
+# one-way line (liiklus 20/30), so "state road AND one-way" identifies
+# motorway/expressway segments without joining carriageway pairs.
 LAYERS = [
     LayerDef(
         "etak",
@@ -26,11 +30,9 @@ LAYERS = [
         """
 SELECT geom,
   CASE
-    WHEN tyyp = 10 THEN 'motorway'
-    WHEN tyyp = 40 THEN 'motorway'
-    WHEN tyyp = 20 THEN 'trunk'
-    WHEN tyyp = 45 THEN 'trunk'
-    WHEN tyyp = 30 THEN 'primary'
+    WHEN tyyp = 10 AND liiklus IN (20,30) THEN 'motorway'
+    WHEN tyyp = 10 THEN 'trunk'
+    WHEN tyyp = 20 THEN 'primary'
   END AS class,
   CAST(NULL AS TEXT) AS subclass,
   CASE WHEN COALESCE(a_tasand, l_tasand) IN (1,2,3) THEN 'bridge'
@@ -39,13 +41,15 @@ SELECT geom,
   CASE WHEN teekate IN (10,30) THEN 'paved'
        WHEN teekate IN (20,40) THEN 'unpaved'
        ELSE NULL END AS surface,
-  CASE WHEN soidutee = 2 AND tyyp IN (10,20) THEN 1 ELSE 0 END AS expressway,
+  CASE WHEN tyyp IN (10,20) AND liiklus IN (20,30) THEN 1 ELSE 0 END AS expressway,
+  CASE WHEN liiklus = 20 THEN 1 WHEN liiklus = 30 THEN -1 ELSE 0 END AS oneway,
+  0 AS ramp,
   tee AS ref
 FROM E_501_tee_j
-WHERE tyyp IN (10, 20, 30, 40, 45)
+WHERE tyyp IN (10, 20)
 """,
         "PROMOTE_TO_MULTI",
-        "Low zoom roads: only the national-scale road classes.",
+        "Low zoom roads: main and support national roads only.",
     ),
     LayerDef(
         "etak",
@@ -53,13 +57,16 @@ WHERE tyyp IN (10, 20, 30, 40, 45)
         """
 SELECT geom,
   CASE
-    WHEN tyyp = 10 THEN 'motorway'
-    WHEN tyyp = 40 THEN 'motorway'
-    WHEN tyyp = 20 THEN 'trunk'
-    WHEN tyyp = 45 THEN 'trunk'
-    WHEN tyyp = 30 THEN 'primary'
-    WHEN tyyp = 50 AND tahtsus = 10 THEN 'secondary'
-    WHEN tyyp = 50 AND tahtsus = 20 THEN 'tertiary'
+    WHEN tyyp = 10 AND liiklus IN (20,30) THEN 'motorway'
+    WHEN tyyp = 10 THEN 'trunk'
+    WHEN tyyp = 20 THEN 'primary'
+    WHEN tyyp = 30 THEN 'secondary'
+    WHEN tyyp = 40 AND tee BETWEEN 1 AND 11 THEN 'trunk'
+    WHEN tyyp = 40 AND tee BETWEEN 12 AND 99 THEN 'primary'
+    WHEN tyyp = 40 THEN 'secondary'
+    WHEN tyyp = 45 THEN 'tertiary'
+    WHEN tyyp = 50 AND tahtsus = 10 THEN 'primary'
+    WHEN tyyp = 50 AND tahtsus = 20 THEN 'secondary'
   END AS class,
   CAST(NULL AS TEXT) AS subclass,
   CASE WHEN COALESCE(a_tasand, l_tasand) IN (1,2,3) THEN 'bridge'
@@ -68,10 +75,12 @@ SELECT geom,
   CASE WHEN teekate IN (10,30) THEN 'paved'
        WHEN teekate IN (20,40) THEN 'unpaved'
        ELSE NULL END AS surface,
-  CASE WHEN soidutee = 2 AND tyyp IN (10,20) THEN 1 ELSE 0 END AS expressway,
+  CASE WHEN tyyp IN (10,20) AND liiklus IN (20,30) THEN 1 ELSE 0 END AS expressway,
+  CASE WHEN liiklus = 20 THEN 1 WHEN liiklus = 30 THEN -1 ELSE 0 END AS oneway,
+  CASE WHEN tyyp = 40 THEN 1 ELSE 0 END AS ramp,
   tee AS ref
 FROM E_501_tee_j
-WHERE tyyp IN (10, 20, 30, 40, 45, 50) AND (tyyp != 50 OR tahtsus IN (10, 20))
+WHERE tyyp IN (10, 20, 30, 40, 45) OR (tyyp = 50 AND tahtsus IN (10, 20))
 
 UNION ALL
 
@@ -88,6 +97,8 @@ SELECT geom,
   CAST(NULL AS TEXT) AS brunnel,
   CAST(NULL AS TEXT) AS surface,
   0 AS expressway,
+  0 AS oneway,
+  0 AS ramp,
   CAST(NULL AS TEXT) AS ref
 FROM E_502_roobastee_j
 WHERE tahtsus = 10
@@ -101,28 +112,40 @@ WHERE tahtsus = 10
         """
 SELECT geom,
   CASE
-    WHEN tyyp = 10 THEN 'motorway'
-    WHEN tyyp = 40 THEN 'motorway'
-    WHEN tyyp = 20 THEN 'trunk'
-    WHEN tyyp = 45 THEN 'trunk'
-    WHEN tyyp = 30 THEN 'primary'
-    WHEN tyyp = 50 AND tahtsus = 10 THEN 'secondary'
-    WHEN tyyp = 50 AND tahtsus = 20 THEN 'tertiary'
-    WHEN tyyp = 50 AND tahtsus IN (30,40) THEN 'minor'
+    WHEN tyyp = 10 AND liiklus IN (20,30) THEN 'motorway'
+    WHEN tyyp = 10 THEN 'trunk'
+    WHEN tyyp = 20 THEN 'primary'
+    WHEN tyyp = 30 THEN 'secondary'
+    WHEN tyyp = 40 AND tee BETWEEN 1 AND 11 THEN 'trunk'
+    WHEN tyyp = 40 AND tee BETWEEN 12 AND 99 THEN 'primary'
+    WHEN tyyp = 40 THEN 'secondary'
+    WHEN tyyp = 45 THEN 'tertiary'
+    WHEN tyyp = 50 AND tahtsus = 10 THEN 'primary'
+    WHEN tyyp = 50 AND tahtsus = 20 THEN 'secondary'
+    WHEN tyyp = 50 AND tahtsus = 30 THEN 'minor'
+    WHEN tyyp = 50 AND tahtsus = 40 THEN 'service'
     WHEN tyyp = 50 AND tahtsus = 50 THEN 'path'
-    WHEN tyyp = 60 THEN 'minor'
-    WHEN tyyp = 70 THEN 'track'
+    WHEN tyyp = 60 AND teekate IN (10,30) THEN 'service'
+    WHEN tyyp = 60 THEN 'track'
+    WHEN tyyp = 70 THEN 'path'
     WHEN tyyp = 80 THEN 'path'
     ELSE 'minor'
   END AS class,
-  CAST(NULL AS TEXT) AS subclass,
+  CASE
+    WHEN tyyp = 50 AND tahtsus = 50 THEN 'pedestrian'
+    WHEN tyyp = 70 THEN 'path'
+    WHEN tyyp = 80 THEN 'cycleway'
+    ELSE CAST(NULL AS TEXT)
+  END AS subclass,
   CASE WHEN COALESCE(a_tasand, l_tasand) IN (1,2,3) THEN 'bridge'
        WHEN COALESCE(a_tasand, l_tasand) = -1 THEN 'tunnel'
        ELSE NULL END AS brunnel,
   CASE WHEN teekate IN (10,30) THEN 'paved'
        WHEN teekate IN (20,40) THEN 'unpaved'
        ELSE NULL END AS surface,
-  CASE WHEN soidutee = 2 AND tyyp IN (10,20) THEN 1 ELSE 0 END AS expressway,
+  CASE WHEN tyyp IN (10,20) AND liiklus IN (20,30) THEN 1 ELSE 0 END AS expressway,
+  CASE WHEN liiklus = 20 THEN 1 WHEN liiklus = 30 THEN -1 ELSE 0 END AS oneway,
+  CASE WHEN tyyp = 40 THEN 1 ELSE 0 END AS ramp,
   tee AS ref
 FROM E_501_tee_j
 
@@ -141,6 +164,8 @@ SELECT geom,
   CAST(NULL AS TEXT) AS brunnel,
   CAST(NULL AS TEXT) AS surface,
   0 AS expressway,
+  0 AS oneway,
+  0 AS ramp,
   CAST(NULL AS TEXT) AS ref
 FROM E_502_roobastee_j
 """,
@@ -161,21 +186,47 @@ SELECT geom,
     ELSE NULL
   END AS network,
   CASE
-    WHEN tyyp = 10 THEN 'motorway'
-    WHEN tyyp = 40 THEN 'motorway'
-    WHEN tyyp = 20 THEN 'trunk'
-    WHEN tyyp = 45 THEN 'trunk'
-    WHEN tyyp = 30 THEN 'primary'
-    WHEN tyyp = 50 AND tahtsus = 10 THEN 'secondary'
-    WHEN tyyp = 50 AND tahtsus = 20 THEN 'tertiary'
-    WHEN tyyp = 50 AND tahtsus IN (30,40) THEN 'minor'
+    WHEN tyyp = 10 AND liiklus IN (20,30) THEN 'motorway'
+    WHEN tyyp = 10 THEN 'trunk'
+    WHEN tyyp = 20 THEN 'primary'
+    WHEN tyyp = 30 THEN 'secondary'
+    WHEN tyyp = 40 AND tee BETWEEN 1 AND 11 THEN 'trunk'
+    WHEN tyyp = 40 AND tee BETWEEN 12 AND 99 THEN 'primary'
+    WHEN tyyp = 40 THEN 'secondary'
+    WHEN tyyp = 45 THEN 'tertiary'
+    WHEN tyyp = 50 AND tahtsus = 10 THEN 'primary'
+    WHEN tyyp = 50 AND tahtsus = 20 THEN 'secondary'
+    WHEN tyyp = 50 AND tahtsus = 30 THEN 'minor'
+    WHEN tyyp = 50 AND tahtsus = 40 THEN 'service'
+    WHEN tyyp = 50 AND tahtsus = 50 THEN 'path'
+    WHEN tyyp = 60 AND teekate IN (10,30) THEN 'service'
+    WHEN tyyp = 60 THEN 'track'
+    WHEN tyyp = 70 THEN 'path'
+    WHEN tyyp = 80 THEN 'path'
     ELSE 'minor'
-  END AS class
+  END AS class,
+  CASE
+    WHEN tyyp = 50 AND tahtsus = 50 THEN 'pedestrian'
+    WHEN tyyp = 70 THEN 'path'
+    WHEN tyyp = 80 THEN 'cycleway'
+    ELSE CAST(NULL AS TEXT)
+  END AS subclass
 FROM E_501_tee_j
 WHERE COALESCE(nimetus, ads_nimetus, karto_nimi, tee) IS NOT NULL
 """,
         "PROMOTE_TO_MULTI",
         "Road labels start later so low zooms stay light.",
+    ),
+    LayerDef(
+        "etak",
+        "transportation_area_z9_13",
+        """
+SELECT geom, 'path' AS class, 'pedestrian' AS subclass
+FROM E_501_tee_a
+WHERE tyyp = 60
+""",
+        "PROMOTE_TO_MULTI",
+        "Pedestrian squares and plazas as transportation polygons.",
     ),
     LayerDef("etak", "water_z0_4", "SELECT geom, 'ocean' AS class FROM E_201_meri_a", "PROMOTE_TO_MULTI", "Low zoom water keeps only the sea polygon."),
     LayerDef(
@@ -291,6 +342,35 @@ WHERE tyyp IN (30, 60, 100)
         "PROMOTE_TO_MULTI",
         "Landuse starts at z1 so z0 stays simple.",
     ),
+    LayerDef(
+        "etak",
+        "landuse_detail_z8_13",
+        """
+SELECT geom,
+  CASE
+    WHEN tyyp = 20 THEN 'parking'
+    WHEN tyyp = 30 THEN 'bus_station'
+    WHEN tyyp = 50 THEN 'stadium'
+  END AS class
+FROM E_501_tee_a
+WHERE tyyp IN (20, 30, 50)
+""",
+        "PROMOTE_TO_MULTI",
+        "Parking lots, bus stations and sports grounds at street zooms.",
+    ),
+    LayerDef(
+        "etak",
+        "aeroway_z6_13",
+        """
+SELECT geom, 'aerodrome' AS class FROM E_301_muu_kolvik_ka WHERE tyyp = 40
+
+UNION ALL
+
+SELECT geom, 'runway' AS class FROM E_501_tee_a WHERE tyyp = 40
+""",
+        "PROMOTE_TO_MULTI",
+        "Airfield areas and runways.",
+    ),
     LayerDef("etak", "building_z9_13", "SELECT geom FROM E_401_hoone_ka WHERE tyyp IN (10, 20)", "PROMOTE_TO_MULTI", "Buildings appear only where L-EST zoom has enough detail."),
     LayerDef(
         "ehak",
@@ -366,13 +446,57 @@ WHERE TYYP IN (3, 4, 5, 6, 7, 8)
     ),
     LayerDef(
         "etak",
-        "poi_z8_13",
+        "park_z5_13",
+        # E_301_muu_kolvik_a has no name field, so park polygons carry no label.
+        "SELECT geom, 'public_park' AS class FROM E_301_muu_kolvik_a WHERE tyyp = 10",
+        "PROMOTE_TO_MULTI",
+        "Green areas (haljasala) as park polygons.",
+    ),
+    LayerDef(
+        "ads",
+        "place_detail_z8_13",
         """
-SELECT ST_Centroid(geom) AS geom, tyyp_t AS name, 'park' AS class, 'park' AS subclass
-FROM E_301_muu_kolvik_a WHERE tyyp = 10
+SELECT geom,
+  CASE WHEN nimi LIKE '% linnaosa' THEN substr(nimi, 1, length(nimi) - 9) ELSE nimi END AS name,
+  'quarter' AS class, 11 AS rank, 0 AS capital, 8 AS minzoom
+FROM ads_linnaosa
 
 UNION ALL
 
+SELECT geom,
+  CASE WHEN nimi LIKE '% asum' THEN substr(nimi, 1, length(nimi) - 5) ELSE nimi END AS name,
+  'neighbourhood' AS class, 13 AS rank, 0 AS capital, 9 AS minzoom
+FROM ads_asum
+
+UNION ALL
+
+SELECT geom,
+  CASE WHEN nimi LIKE '% väikekoht' THEN substr(nimi, 1, length(nimi) - 10) ELSE nimi END AS name,
+  'neighbourhood' AS class, 14 AS rank, 0 AS capital, 10 AS minzoom
+FROM ads_vk
+WHERE olek = 'K'
+""",
+        "POINT",
+        "Unofficial city districts, asum neighbourhoods and small places as labels.",
+    ),
+    LayerDef(
+        "etak",
+        "housenumber_z10_13",
+        """
+SELECT ST_PointOnSurface(geom) AS geom,
+  substr(ads_lahiaadress, length(rtrim(ads_lahiaadress, replace(ads_lahiaadress, ' ', ''))) + 1) AS housenumber
+FROM E_401_hoone_ka
+WHERE tyyp IN (10, 20)
+  AND ads_lahiaadress IS NOT NULL AND ads_lahiaadress != ''
+  AND substr(substr(ads_lahiaadress, length(rtrim(ads_lahiaadress, replace(ads_lahiaadress, ' ', ''))) + 1), 1, 1) BETWEEN '0' AND '9'
+""",
+        "POINT",
+        "Building numbers: trailing digit-token of ads_lahiaadress, point placed on the footprint.",
+    ),
+    LayerDef(
+        "etak",
+        "poi_z8_13",
+        """
 SELECT ST_Centroid(geom) AS geom, nimetus AS name, 'harbor' AS class, 'harbor' AS subclass
 FROM E_301_muu_kolvik_ka WHERE tyyp = 50 AND nimetus IS NOT NULL AND nimetus != ''
 

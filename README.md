@@ -23,8 +23,15 @@ From PowerShell:
 ```powershell
 cd C:\vectortile\python-pipeline
 docker compose run --rm pipeline
+docker compose run --rm package
 docker compose up viewer
 ```
+
+`package` zips the generated tiles into the final datapackage at
+`dist\estonia.zip` (or `dist\tallinn.zip` for the Tallinn prototype) on the host.
+This zip is the main product of the pipeline: the tile tree with `{z}/{x}/{y}.pbf`
+and `metadata.json` at the zip root, entries stored uncompressed because the pbf
+tiles are already gzipped.
 
 On the first run, Docker may appear to pause after creating the network while it
 pulls and extracts the large GDAL base image. To see those Docker build logs,
@@ -46,18 +53,21 @@ Open:
 http://localhost:8080
 ```
 
-By default `pipeline` builds the faster Tallinn prototype. It runs:
+By default `pipeline` builds the full Estonia tile set. It runs:
 
-1. `prepare` - download ETAK/EHAK source data.
+1. `prepare` - download ETAK/EHAK source data (plus optional ADS, see below).
 2. `preprocess` - build `/data/basemap.gpkg`.
-3. `generate` - create vector tiles in `/out/tallinn`.
+3. `generate` - create vector tiles in `/out/estonia`.
 4. `viewer-config` - update `viewer/config.js`.
 
-For full Estonia:
+Run `docker compose run --rm package` afterwards to build the datapackage zip
+in `dist\` on the host. The viewer opens the Estonia source by default.
+
+For the faster Tallinn prototype (optional), set `MODE=tallinn`:
 
 ```powershell
 cd C:\vectortile\python-pipeline
-$env:MODE = "full"
+$env:MODE = "tallinn"
 docker compose run --rm pipeline
 docker compose up viewer
 ```
@@ -65,14 +75,50 @@ docker compose up viewer
 In bash-compatible shells, the equivalent is:
 
 ```bash
-MODE=full docker compose run --rm pipeline
+MODE=tallinn docker compose run --rm pipeline
 docker compose up viewer
 ```
 
-Open the full-country tile source explicitly with:
+Open the Tallinn prototype tile source explicitly with:
 
 ```text
-http://localhost:8080/?src=full
+http://localhost:8080/?src=tallinn
+```
+
+## Optional ADS source
+
+The ADS layers (unofficial city districts, `asum` neighbourhoods and small
+places) come from the AKS WFS at `aks.geoportaal.ee` and feed only the secondary
+`place_detail` label layer. They are optional, so the build does not depend on
+that service being available:
+
+- **Skip explicitly:** set `SKIP_ADS=1` on `prepare` / `data-prep` / `pipeline`
+  to skip the ADS download entirely. Use this when the AKS WFS is down or slow.
+- **Automatic fallback:** if ADS is not skipped but the download fails, the error
+  is downgraded to a warning and the build continues without it.
+- **Effect:** when ADS is absent, `preprocess` skips the ADS-based layer and
+  `place_detail` labels are omitted. Everything else is unaffected - roads,
+  water, landcover, buildings, main place labels, and **house numbers** (which
+  come from the ETAK building layer, not ADS).
+
+```powershell
+# Full Estonia build without ADS
+docker compose run --rm -e SKIP_ADS=1 pipeline
+
+# Or just the download step
+docker compose run --rm -e SKIP_ADS=1 data-prep
+```
+
+In bash-compatible shells, use `SKIP_ADS=1 docker compose run --rm pipeline`.
+
+To add the district labels later, once the WFS is back, fetch ADS and rebuild the
+affected steps:
+
+```powershell
+docker compose run --rm data-prep    # fetch ADS (no SKIP_ADS)
+docker run --rm -v vt-3301-python_vt_data:/data alpine rm -f /data/basemap.gpkg
+docker compose run --rm preprocess
+docker compose run --rm generate
 ```
 
 ## Timing and progress
@@ -111,18 +157,20 @@ You can also run each step separately:
 
 ```powershell
 cd C:\vectortile\python-pipeline
-docker compose run --rm data-prep
+docker compose run --rm data-prep                 # add -e SKIP_ADS=1 to skip ADS
 docker compose run --rm preprocess
 docker compose run --rm generate
+docker compose run --rm package
 docker compose run --rm viewer-config
 docker compose up viewer
 ```
 
-For separate full-generation steps:
+The steps above default to full Estonia. For the Tallinn prototype instead:
 
 ```powershell
-$env:MODE = "full"
+$env:MODE = "tallinn"
 docker compose run --rm generate
+docker compose run --rm package
 docker compose run --rm viewer-config
 ```
 
@@ -132,10 +180,11 @@ The Docker Compose volumes hold the generated data:
 
 | Output | Location in containers | Description |
 | --- | --- | --- |
-| Source data | `/data/sources/etak.gpkg`, `/data/sources/ehak.gpkg` | Downloaded/prepared source GeoPackages |
+| Source data | `/data/sources/etak.gpkg`, `/data/sources/ehak.gpkg`, `/data/sources/ads.gpkg` (optional) | Downloaded/prepared source GeoPackages; `ads.gpkg` absent when ADS is skipped |
 | Preprocessed map | `/data/basemap.gpkg` | OMT-like render layers in EPSG:3301 |
-| Tallinn tiles | `/out/tallinn/{z}/{x}/{y}.pbf` | Fast prototype tile set |
-| Full Estonia tiles | `/out/estonia/{z}/{x}/{y}.pbf` | Full-country tile set |
+| Full Estonia tiles | `/out/estonia/{z}/{x}/{y}.pbf` | Full-country tile set (default) |
+| Tallinn tiles | `/out/tallinn/{z}/{x}/{y}.pbf` | Optional fast prototype tile set |
+| Datapackage | `dist\estonia.zip` (default), `dist\tallinn.zip` (host) | Zipped tile tree - the final deliverable |
 | Viewer config | `viewer/config.js` | Browser tile grid/source config generated from Python settings |
 
 Existing outputs are skipped. To rebuild a step, delete that output from the
@@ -148,11 +197,12 @@ The compose services call these commands:
 ```bash
 python3 -m vt_pipeline prepare
 python3 -m vt_pipeline preprocess
-python3 -m vt_pipeline generate --mode tallinn
+python3 -m vt_pipeline generate --mode estonia
+python3 -m vt_pipeline package --mode estonia
 python3 -m vt_pipeline config-json
 python3 -m vt_pipeline viewer-config --output viewer/config.js
+python3 -m vt_pipeline run-all --mode estonia
 python3 -m vt_pipeline run-all --mode tallinn
-python3 -m vt_pipeline run-all --mode full
 ```
 
 `config-json` prints the GDAL MVT `CONF` JSON generated from

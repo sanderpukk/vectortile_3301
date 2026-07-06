@@ -21,16 +21,18 @@ MVT = {
 }
 
 MODES = {
-    # Fast prototype around Tallinn. This validates the grid and styling
-    # without generating all Estonia tiles.
+    # Default: full-country generation. This is the main product; it takes
+    # longer and uses more disk than the Tallinn prototype.
+    "estonia": {
+        "output": "estonia",
+        "bbox": None,
+    },
+    # Optional fast prototype around Tallinn. Validates the grid and styling
+    # without generating all Estonia tiles. Select with `--mode tallinn`
+    # (or MODE=tallinn for Docker Compose).
     "tallinn": {
         "output": "tallinn",
         "bbox": [530000, 6570000, 560000, 6600000],
-    },
-    # Full-country generation. This can take much longer and use more disk.
-    "full": {
-        "output": "estonia",
-        "bbox": None,
     },
 }
 
@@ -40,6 +42,7 @@ LAYERS = {
     "transportation_z0_4": {"target_name": "transportation", "minzoom": 0, "maxzoom": 4},
     "transportation_z5_8": {"target_name": "transportation", "minzoom": 5, "maxzoom": 8},
     "transportation_z9_13": {"target_name": "transportation", "minzoom": 9, "maxzoom": 13},
+    "transportation_area_z9_13": {"target_name": "transportation", "minzoom": 9, "maxzoom": 13},
     "transportation_name_z8_13": {"target_name": "transportation_name", "minzoom": 8, "maxzoom": 13},
     "water_z0_4": {"target_name": "water", "minzoom": 0, "maxzoom": 4},
     "water_z5_8": {"target_name": "water", "minzoom": 5, "maxzoom": 8},
@@ -49,9 +52,14 @@ LAYERS = {
     "landcover_z5_8": {"target_name": "landcover", "minzoom": 5, "maxzoom": 8},
     "landcover_z9_13": {"target_name": "landcover", "minzoom": 9, "maxzoom": 13},
     "landuse_z1_13": {"target_name": "landuse", "minzoom": 1, "maxzoom": 13},
+    "landuse_detail_z8_13": {"target_name": "landuse", "minzoom": 8, "maxzoom": 13},
+    "aeroway_z6_13": {"target_name": "aeroway", "minzoom": 6, "maxzoom": 13},
     "building_z9_13": {"target_name": "building", "minzoom": 9, "maxzoom": 13},
     "boundary_z0_13": {"target_name": "boundary", "minzoom": 0, "maxzoom": 13},
     "place_z0_13": {"target_name": "place", "minzoom": 0, "maxzoom": 13},
+    "place_detail_z8_13": {"target_name": "place", "minzoom": 8, "maxzoom": 13},
+    "housenumber_z10_13": {"target_name": "housenumber", "minzoom": 10, "maxzoom": 13},
+    "park_z5_13": {"target_name": "park", "minzoom": 5, "maxzoom": 13},
     "poi_z8_13": {"target_name": "poi", "minzoom": 8, "maxzoom": 13},
 }
 

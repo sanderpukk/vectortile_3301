@@ -19,11 +19,21 @@ def preprocess(sources_dir: str | Path, output: str | Path) -> None:
         return
 
     output.parent.mkdir(parents=True, exist_ok=True)
+    # ADS is optional (only feeds the secondary place-detail label layer). If it
+    # was skipped or failed to download, build without it rather than aborting.
     source_files = {"etak": etak, "ehak": ehak}
+    ads = sources / "ads.gpkg"
+    if ads.exists():
+        source_files["ads"] = ads
+    else:
+        print(f"ADS source {ads} not found; skipping ADS-based layers.")
 
     with tempfile.TemporaryDirectory(prefix="basemap-") as tmp:
         tmp_out = Path(tmp) / "basemap.gpkg"
         for layer in LAYERS:
+            if layer.source not in source_files:
+                print(f"Skipping layer {layer.name}: source {layer.source!r} unavailable.")
+                continue
             print(f"Creating layer {layer.name}: {layer.comment}")
             ogr2ogr(
                 tmp_out,

@@ -22,7 +22,7 @@ def viewer_config(config: dict[str, Any]) -> dict[str, Any]:
         "tileSize": tile_grid["tile_size"],
         "maxzoom": mvt["maxzoom"],
         "baseResolution": tile_grid["size"] / tile_grid["tile_size"],
-        "defaultSource": "tallinn" if "tallinn" in sources else next(iter(sources)),
+        "defaultSource": "estonia" if "estonia" in sources else next(iter(sources)),
         "sources": sources,
     }
 

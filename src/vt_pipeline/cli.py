@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .config import DEFAULT_CONFIG, load_config, mvt_conf_json
 from .generate import generate
+from .package import package
 from .pipeline import run_all
 from .prepare import prepare
 from .preprocess import preprocess
@@ -26,10 +27,15 @@ def main() -> None:
     p_preprocess.add_argument("--output", default=os.environ.get("OUTPUT", "/data/basemap.gpkg"))
 
     p_generate = sub.add_parser("generate", help="generate MVT directory tiles")
-    p_generate.add_argument("--mode", default=os.environ.get("MODE", "tallinn"))
+    p_generate.add_argument("--mode", default=os.environ.get("MODE", "estonia"))
     p_generate.add_argument("--data-dir", default=os.environ.get("DATA_DIR", "/data"))
     p_generate.add_argument("--out-dir", default=os.environ.get("OUT_DIR", "/out"))
     p_generate.add_argument("--tmp-dir", default=os.environ.get("TMP_DIR", "/gdaltmp"))
+
+    p_package = sub.add_parser("package", help="zip generated tiles into a datapackage in the dist dir")
+    p_package.add_argument("--mode", default=os.environ.get("MODE", "estonia"))
+    p_package.add_argument("--out-dir", default=os.environ.get("OUT_DIR", "/out"))
+    p_package.add_argument("--dist-dir", default=os.environ.get("DIST_DIR", "/dist"))
 
     sub.add_parser("config-json", help="print GDAL MVT CONF JSON generated from Python config")
 
@@ -37,7 +43,7 @@ def main() -> None:
     p_viewer.add_argument("--output", default=os.environ.get("VIEWER_CONFIG", "/app/viewer/config.js"))
 
     p_run_all = sub.add_parser("run-all", help="run prepare, preprocess, generate, and viewer-config with one total timer")
-    p_run_all.add_argument("--mode", default=os.environ.get("MODE", "tallinn"))
+    p_run_all.add_argument("--mode", default=os.environ.get("MODE", "estonia"))
     p_run_all.add_argument("--sources-dir", default=os.environ.get("SOURCES_DIR", "/data/sources"))
     p_run_all.add_argument("--data-dir", default=os.environ.get("DATA_DIR", "/data"))
     p_run_all.add_argument("--out-dir", default=os.environ.get("OUT_DIR", "/out"))
@@ -56,6 +62,9 @@ def main() -> None:
     elif args.command == "generate":
         with timed_step(f"generate {args.mode}"):
             generate(mode=args.mode, config_path=config_path, data_dir=args.data_dir, out_dir=args.out_dir, tmp_dir=args.tmp_dir)
+    elif args.command == "package":
+        with timed_step(f"package {args.mode}"):
+            package(mode=args.mode, config_path=config_path, out_dir=args.out_dir, dist_dir=args.dist_dir)
     elif args.command == "config-json":
         print(mvt_conf_json(load_config(config_path)), end="")
     elif args.command == "viewer-config":

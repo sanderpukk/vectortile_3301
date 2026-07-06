@@ -8,6 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/ol@10.6.1/dist/ol.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/ol-mapbox-style@13.4.1/dist/olms.js"></script>
 <script src="/config.js"></script>
+<script src="/inspector.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@10.6.1/ol.css">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -28,6 +29,21 @@
     color: #555;
   }
   #status:empty { display: none; }
+  #inspector {
+    position: absolute; top: 10px; right: 10px; z-index: 100;
+    width: min(360px, calc(100vw - 20px)); max-height: calc(100vh - 72px);
+    overflow: auto; background: rgba(255,255,255,0.95); padding: 10px 12px;
+    border-radius: 4px; font-size: 12px; line-height: 1.35;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.18); color: #3d3d3d;
+  }
+  #inspector:empty { display: none; }
+  .inspector-title { font-weight: 700; color: #222; margin-bottom: 6px; }
+  .inspector-meta { color: #666; margin-bottom: 8px; }
+  .inspector-feature { border-top: 1px solid rgba(0,0,0,0.12); padding-top: 8px; margin-top: 8px; }
+  .inspector-feature:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+  .inspector-row { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 8px; margin: 3px 0; }
+  .inspector-label { color: #777; }
+  .inspector-value { color: #222; overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -37,6 +53,7 @@
   <span id="coords"></span> |
   <span id="tilecoord"></span>
 </div>
+<div id="inspector"></div>
 <div id="status"></div>
 <script>
 proj4.defs('EPSG:3301',
@@ -51,8 +68,8 @@ const viewerConfig = window.VT_PIPELINE_CONFIG || {
   tileSize: 256,
   maxzoom: 13,
   baseResolution: 4000,
-  defaultSource: 'tallinn',
-  sources: { tallinn: '/tiles/tallinn/{z}/{x}/{y}.pbf' }
+  defaultSource: 'estonia',
+  sources: { estonia: '/tiles/estonia/{z}/{x}/{y}.pbf' }
 };
 
 const extent = viewerConfig.extent;
@@ -77,6 +94,7 @@ document.getElementById('src').textContent =
   params.get('url') ? 'custom' : srcKey.toUpperCase();
 
 let currentZoom = 8;
+let styleLayerIndex = {};
 
 function labelText(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -238,6 +256,69 @@ const map = new ol.Map({
 });
 
 const statusEl = document.getElementById('status');
+const inspectorEl = document.getElementById('inspector');
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getTileCoordinateText(coordinate) {
+  const [x, y] = coordinate;
+  const z = currentZoom;
+  if (z < 0 || z > viewerConfig.maxzoom || z !== Math.floor(z)) return null;
+
+  const tileEdge = viewerConfig.baseResolution / Math.pow(2, z) * viewerConfig.tileSize;
+  const tx = Math.floor((x - viewerConfig.origin[0]) / tileEdge);
+  const ty = Math.floor((viewerConfig.origin[1] - y) / tileEdge);
+  return z + '/' + tx + '/' + ty;
+}
+
+function renderStyleLayerSummary(styleLayers) {
+  if (!styleLayers.length) return '<span class="inspector-value">No matching style layer</span>';
+  return styleLayers
+    .map((layer) => escapeHtml(layer.id) + ' (' + escapeHtml(layer.type) + ')')
+    .join('<br>');
+}
+
+function renderPropertySummary(properties) {
+  if (!properties.length) return '<span class="inspector-value">No scalar properties</span>';
+  return properties
+    .map(([key, value]) => escapeHtml(key) + ': ' + escapeHtml(value))
+    .join('<br>');
+}
+
+function renderInspector(features, coordinate) {
+  const [x, y] = coordinate;
+  const tileText = getTileCoordinateText(coordinate);
+  const meta = [
+    Math.round(x) + ', ' + Math.round(y),
+    tileText ? 'tile ' + tileText : null
+  ].filter(Boolean).join(' | ');
+
+  if (!features.length) {
+    inspectorEl.innerHTML =
+      '<div class="inspector-title">No vector feature</div>' +
+      '<div class="inspector-meta">' + escapeHtml(meta) + '</div>';
+    return;
+  }
+
+  inspectorEl.innerHTML =
+    '<div class="inspector-title">' + features.length + ' feature' + (features.length === 1 ? '' : 's') + '</div>' +
+    '<div class="inspector-meta">' + escapeHtml(meta) + '</div>' +
+    features.map((feature) =>
+      '<div class="inspector-feature">' +
+        '<div class="inspector-row"><div class="inspector-label">category</div><div class="inspector-value">' + escapeHtml(feature.category) + '</div></div>' +
+        '<div class="inspector-row"><div class="inspector-label">geometry</div><div class="inspector-value">' + escapeHtml(feature.geometryType) + '</div></div>' +
+        '<div class="inspector-row"><div class="inspector-label">style</div><div class="inspector-value">' + renderStyleLayerSummary(feature.styleLayers) + '</div></div>' +
+        '<div class="inspector-row"><div class="inspector-label">properties</div><div class="inspector-value">' + renderPropertySummary(feature.properties) + '</div></div>' +
+      '</div>'
+    ).join('');
+}
 
 fetch(styleUrl)
   .then((response) => {
@@ -246,6 +327,7 @@ fetch(styleUrl)
   })
   .then((glStyle) => {
     const prepared = prepare3301Style(glStyle);
+    styleLayerIndex = VectorTileInspector.buildStyleLayerIndex(prepared.style);
     return olms.applyStyle(vtLayer, prepared.style, {
       source: prepared.sourceId,
       updateSource: false,
@@ -273,6 +355,24 @@ map.on('moveend', function() {
   zoomEl.textContent = z >= 0 ? z : '~' + Math.round(currentZoom * 10) / 10;
 });
 
+map.on('singleclick', function(e) {
+  const features = [];
+  const seen = new Set();
+
+  map.forEachFeatureAtPixel(e.pixel, function(feature) {
+    if (seen.has(feature)) return;
+    seen.add(feature);
+    features.push(VectorTileInspector.describeFeatureForInspector(feature, styleLayerIndex));
+  }, {
+    hitTolerance: 5,
+    layerFilter: function(layer) {
+      return layer === vtLayer;
+    }
+  });
+
+  renderInspector(features.slice(0, 6), e.coordinate);
+});
+
 map.on('pointermove', function(e) {
   const [x, y] = e.coordinate;
   coordsEl.textContent = Math.round(x) + ', ' + Math.round(y);
@@ -287,4 +387,5 @@ map.on('pointermove', function(e) {
 </script>
 </body>
 </html>
+
 

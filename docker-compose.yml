@@ -20,7 +20,7 @@ services:
 
   generate:
     build: .
-    command: ["generate", "--mode", "${MODE:-tallinn}"]
+    command: ["generate", "--mode", "${MODE:-estonia}"]
     environment:
       GDAL_NUM_THREADS: ALL_CPUS
       DATA_DIR: /data
@@ -31,9 +31,19 @@ services:
       - vt_tiles:/out
       - vt_tmp:/gdaltmp
 
+  package:
+    build: .
+    command: ["package", "--mode", "${MODE:-estonia}"]
+    environment:
+      OUT_DIR: /out
+      DIST_DIR: /dist
+    volumes:
+      - vt_tiles:/out
+      - ./dist:/dist
+
   pipeline:
     build: .
-    command: ["run-all", "--mode", "${MODE:-tallinn}"]
+    command: ["run-all", "--mode", "${MODE:-estonia}"]
     environment:
       GDAL_NUM_THREADS: ALL_CPUS
       SOURCES_DIR: /data/sources
@@ -61,6 +71,7 @@ services:
       - vt_tiles:/srv/tiles:ro
       - ./viewer/index.html:/usr/share/nginx/html/index.html:ro
       - ./viewer/config.js:/usr/share/nginx/html/config.js:ro
+      - ./viewer/inspector.js:/usr/share/nginx/html/inspector.js:ro
       - ./viewer/ehak_counties.geojson:/usr/share/nginx/html/ehak_counties.geojson:ro
       - ./viewer/osm_bright_style.json:/usr/share/nginx/html/osm_bright_style.json:ro
       - ./viewer/nginx.conf:/etc/nginx/conf.d/default.conf:ro
@@ -69,4 +80,5 @@ volumes:
   vt_data:
   vt_tiles:
   vt_tmp:
+
 
