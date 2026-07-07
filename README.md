@@ -1,8 +1,11 @@
 # Estonia EPSG:3301 Python GDAL pipeline
 
-This folder is a shareable, GDAL-only version of the vector tile build. Python
-owns the data download, preprocessing layer mapping, classifier SQL, and tile
+This repo is the GDAL-only vector tile pipeline for Estonia in EPSG:3301 (L-EST97).
+Python owns the data download, preprocessing layer mapping, classifier SQL, and tile
 settings. GDAL still does the heavy geospatial work through CLI subprocesses.
+
+The Web Mercator counterpart (EPSG:3857, Planetiler + Martin) lives in
+[sanderpukk/vectortile_3857](https://github.com/sanderpukk/vectortile_3857).
 
 ## Layout
 
@@ -18,10 +21,9 @@ settings. GDAL still does the heavy geospatial work through CLI subprocesses.
 
 ## Run with Docker Compose
 
-From PowerShell:
+From PowerShell (run from the repo root):
 
 ```powershell
-cd C:\vectortile\python-pipeline
 docker compose run --rm pipeline
 docker compose run --rm package
 docker compose up viewer
@@ -38,7 +40,6 @@ pulls and extracts the large GDAL base image. To see those Docker build logs,
 build the image explicitly first:
 
 ```powershell
-cd C:\vectortile\python-pipeline
 docker compose --progress=plain build pipeline
 docker compose run --rm pipeline
 ```
@@ -66,7 +67,6 @@ in `dist\` on the host. The viewer opens the Estonia source by default.
 For the faster Tallinn prototype (optional), set `MODE=tallinn`:
 
 ```powershell
-cd C:\vectortile\python-pipeline
 $env:MODE = "tallinn"
 docker compose run --rm pipeline
 docker compose up viewer
@@ -156,7 +156,6 @@ If you run steps separately, each command reports only its own elapsed time. Use
 You can also run each step separately:
 
 ```powershell
-cd C:\vectortile\python-pipeline
 docker compose run --rm data-prep                 # add -e SKIP_ADS=1 to skip ADS
 docker compose run --rm preprocess
 docker compose run --rm generate
@@ -219,5 +218,6 @@ tile grid and tile source URLs from the same Python settings.
   remains comparable.
 - `config/settings.py` is the user-facing config. GDAL JSON and viewer JS are
   generated from it.
-- The viewer is GDAL-only in this folder. The root repo still contains the
-  separate PostGIS/worker pipeline.
+- This repo produces PBF tiles in a zip archive (EPSG:3301). The Web Mercator
+  counterpart using Planetiler + PMTiles is at
+  [sanderpukk/vectortile_3857](https://github.com/sanderpukk/vectortile_3857).
