@@ -20,6 +20,7 @@ ENV/
 # Packaging and build outputs
 build/
 dist/*
+!dist/.gitkeep
 *.egg-info/
 pip-wheel-metadata/
 
