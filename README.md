@@ -7,6 +7,24 @@ settings. GDAL still does the heavy geospatial work through CLI subprocesses.
 The Web Mercator counterpart (EPSG:3857, Planetiler + Martin) lives in
 [sanderpukk/vectortile_3857](https://github.com/sanderpukk/vectortile_3857).
 
+## Architecture
+
+```mermaid
+flowchart TD
+    etak["ETAK<br>geoportaal.ee"] --> prepare["prepare.py<br>Download sources"]
+    ehak["EHAK<br>maaamet.ee"] --> prepare
+    ads["ADS WFS<br>aks.geoportaal.ee<br><i>optional</i>"] --> prepare
+    prepare --> sources["sources/<br>etak.gpkg · ehak.gpkg · ads.gpkg"]
+    sources --> preprocess["preprocess.py<br>Layer SQL · EPSG:3301"]
+    preprocess --> basemap["basemap.gpkg"]
+    basemap --> generate["generate.py<br>GDAL MVT"]
+    generate --> pbf["{z}/{x}/{y}.pbf"]
+    pbf --> package["package.py"]
+    pbf --> viewercfg["viewer-config"]
+    package --> zip["dist/estonia.zip<br><i>final deliverable</i>"]
+    viewercfg --> viewer["OpenLayers viewer<br>localhost:8080"]
+```
+
 ## Layout
 
 | Path | Purpose |
