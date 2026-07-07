@@ -19,7 +19,7 @@ ENV/
 
 # Packaging and build outputs
 build/
-dist/
+dist/*
 *.egg-info/
 pip-wheel-metadata/
 
