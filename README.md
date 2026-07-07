@@ -11,8 +11,8 @@ The Web Mercator counterpart (EPSG:3857, Planetiler + Martin) lives in
 
 ```mermaid
 flowchart TD
-    etak["ETAK<br>geoportaal.ee"] --> prepare["prepare.py<br>Download sources"]
-    ehak["EHAK<br>maaamet.ee"] --> prepare
+    etak["ETAK<br>geoportaal.maaamet.ee"] --> prepare["prepare.py<br>Download sources"]
+    ehak["EHAK<br>s3.pilw.io"] --> prepare
     ads["ADS WFS<br>aks.geoportaal.ee<br><i>optional</i>"] --> prepare
     prepare --> sources["sources/<br>etak.gpkg · ehak.gpkg · ads.gpkg"]
     sources --> preprocess["preprocess.py<br>Layer SQL · EPSG:3301"]
@@ -23,6 +23,10 @@ flowchart TD
     pbf --> viewercfg["viewer-config"]
     package --> zip["dist/estonia.zip<br><i>final deliverable</i>"]
     viewercfg --> viewer["OpenLayers viewer<br>localhost:8080"]
+
+    click etak "https://geoportaal.maaamet.ee/index.php?lang_id=2&plugin_act=otsing&andmetyyp=ETAK&dl=1&f=ETAK_EESTI_GPKG.zip&page_id=618" _blank
+    click ehak "https://geoportaal.maaamet.ee/est/Ruumiandmed/Haldus-ja-asustusjaotus-p119.html" _blank
+    click ads "https://aks.geoportaal.ee/aks-ogc" _blank
 ```
 
 ## Layout
